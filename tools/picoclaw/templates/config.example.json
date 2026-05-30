@@ -1,0 +1,5 @@
+{
+  "provider": "openrouter",
+  "api_key": "COLE_SUA_CHAVE_LOCAL_AQUI_NUNCA_COMMITE",
+  "model": "anthropic/claude-3.5-sonnet"
+}
