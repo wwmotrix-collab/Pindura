@@ -1,11 +1,11 @@
 {
-  "name": "Pindura",
+  "name": "Pindura — Confiança é o prendedor",
   "short_name": "Pindura",
-  "description": "Confiança é o prendedor",
+  "description": "Pindura — Confiança é o prendedor",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#061b12",
-  "theme_color": "#061b12",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff",
   "orientation": "portrait",
   "lang": "pt-BR",
   "icons": [

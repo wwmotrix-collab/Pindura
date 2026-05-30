@@ -1,5 +1,5 @@
 // PENDURA v2.1 — SERVICE WORKER
-const CACHE = 'pindura-v2.1.6-features';
+const CACHE = 'pindura-v2.1.6-brand-white';
 const ASSETS = [
   '/', '/index.html',
   '/css/main.css',
@@ -7,7 +7,7 @@ const ASSETS = [
   '/js/modules/fx.js', '/js/modules/confidence.js',
   '/js/modules/calendar.js', '/js/modules/profile.js',
   '/js/services/whatsapp.js',
-  '/manifest.json', '/icons/logo-pindura.png'
+  '/manifest.json', '/icons/logo-pindura.png', '/icons/logo-pindura-horizontal.png', '/icons/logo-pindura-vertical.png', '/icons/splash-pindura.png', '/icons/icon-192.png', '/icons/icon-512.png'
 ];
 
 self.addEventListener('install', e => {
