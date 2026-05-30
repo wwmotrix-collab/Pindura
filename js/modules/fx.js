@@ -28,7 +28,7 @@ const FX = (() => {
       this.vy = -(Math.random() * (opts.lift || 5) + 1);
       this.alpha  = 1;
       this.radius = Math.random() * (opts.maxR || 5) + (opts.minR || 2);
-      this.color  = opts.color || '#3dbb6c';
+      this.color  = opts.color || '#20c8c0';
       this.gravity = opts.gravity ?? 0.12;
       this.decay   = opts.decay  ?? 0.025;
       this.shape   = opts.shape  || 'circle';  // 'circle' | 'coin' | 'star' | 'check'
@@ -56,8 +56,8 @@ const FX = (() => {
         ctx.beginPath();
         ctx.ellipse(0, 0, this.radius, this.radius * 0.6, 0, 0, Math.PI * 2);
         const grd = ctx.createRadialGradient(-this.radius * 0.3, -this.radius * 0.2, 0, 0, 0, this.radius);
-        grd.addColorStop(0, '#f0d890');
-        grd.addColorStop(1, '#c9a84c');
+        grd.addColorStop(0, '#ffc58a');
+        grd.addColorStop(1, '#ff7a00');
         ctx.fillStyle = grd;
         ctx.fill();
         ctx.strokeStyle = 'rgba(255,220,100,0.6)';
@@ -142,12 +142,12 @@ const FX = (() => {
       },
       // Check verde (confirmação)
       check: {
-        count: 12, shape: 'check', color: '#3dbb6c',
+        count: 12, shape: 'check', color: '#20c8c0',
         spread: 5, lift: 6, gravity: 0.14, decay: 0.028, maxR: 8, minR: 4
       },
       // Estrelas douradas (badge / streak)
       stars: {
-        count: 16, shape: 'star', color: '#e8c56a',
+        count: 16, shape: 'star', color: '#ff9b3d',
         spread: 7, lift: 7, gravity: 0.12, decay: 0.02, maxR: 7, minR: 3
       },
       // Confetti verde leve (quitação total)
@@ -157,14 +157,14 @@ const FX = (() => {
       },
       // Sparks (lançamento de compra)
       sparks: {
-        count: 10, shape: 'spark', color: '#c9a84c',
+        count: 10, shape: 'spark', color: '#ff7a00',
         spread: 4, lift: 5, gravity: 0.2, decay: 0.04, maxR: 6, minR: 2
       }
     };
 
     const cfg = presets[preset] || presets.check;
     const colors = preset === 'confetti'
-      ? ['#3dbb6c', '#c9a84c', '#5ddb8a', '#e8c56a', '#a8f0c0']
+      ? ['#20c8c0', '#ff7a00', '#6fd8d2', '#ff9b3d', '#bdf0ed']
       : null;
 
     for (let i = 0; i < cfg.count; i++) {
@@ -203,7 +203,7 @@ const FX = (() => {
   }
 
   // Glow pulsante em um elemento
-  function pulseElement(el, color = '#3dbb6c') {
+  function pulseElement(el, color = '#20c8c0') {
     if (!el) return;
     const prev = el.style.transition;
     el.style.transition = 'box-shadow 0.15s ease, transform 0.15s ease';
@@ -220,7 +220,7 @@ const FX = (() => {
   function flashCheck(el) {
     if (!el) return;
     const orig = el.innerHTML;
-    el.innerHTML = '<span style="color:#3dbb6c;font-size:1.2em;animation:checkPop 0.4s ease">✓</span>';
+    el.innerHTML = '<span style="color:#20c8c0;font-size:1.2em;animation:checkPop 0.4s ease">✓</span>';
     if (!document.getElementById('check-pop-style')) {
       const s = document.createElement('style');
       s.id = 'check-pop-style';
@@ -240,7 +240,7 @@ const FX = (() => {
     const el = document.getElementById('ledger-balance') ||
                document.getElementById('customer-balance');
     if (!el) return;
-    const color = positive ? '#3dbb6c' : '#c9a84c';
+    const color = positive ? '#20c8c0' : '#ff7a00';
     pulseElement(el, color);
   }
 
