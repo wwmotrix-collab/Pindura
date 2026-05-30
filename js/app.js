@@ -1069,39 +1069,58 @@ const App = (() => {
 
   // ── CALENDÁRIO ────────────────────────────────────
   // FIX: carrega transações com due_date para popular o calendário
-  async function showCalendarScreen() {
-    showScreen('calendar');
-    const mid = S.merchant?.id;
-    if (!mid) return;
+             async function showCalendarScreen() {
+  showScreen('calendar');
 
-    // Busca transações de todos os ledgers com due_date
+  // Renderiza imediatamente, mesmo sem dados
+  try {
+    Calendar.buildEvents([], []);
+    Calendar.render();
+  } catch (e) {
+    console.error('[Calendar] erro no render inicial:', e);
+  }
+
+  const mid = S.merchant?.id;
+  if (!mid) return;
+
+  try {
     const { data: rawTx } = await dbGetAllTransactionsForMerchant(mid);
+
     const allTx = (rawTx || []).map(t => ({
       ...t,
       customerName: t.customerName || t.ledgers?.customers?.name || t.ledgers?.customers?.[0]?.name || '—'
     }));
 
-    // Busca schedules da tabela payment_schedules
     let schedules = [];
     try {
       const { data: sc } = await dbGetSchedules(mid);
       schedules = sc || [];
-    } catch(e) { schedules = []; }
+    } catch (e) {
+      console.warn('[Calendar] dbGetSchedules falhou:', e);
+      schedules = [];
+    }
 
-    // FIX: adiciona transações com due_date como schedules para o calendário
-    const txSchedules = (allTx || [])
+    const txSchedules = allTx
       .filter(t => t.due_date && t.status !== 'cancelled')
       .map(t => ({
-        due_date:     t.due_date,
-        amount:       t.amount,
-        description:  t.description || 'Vencimento',
+        due_date: t.due_date,
+        amount: t.amount,
+        description: t.description || 'Vencimento',
         customerName: t.customerName || '—',
-        status:       t.status === 'confirmed' ? 'paid' : 'pending',
+        status: t.status === 'confirmed' ? 'paid' : 'pending',
+        txId: t.id
       }));
 
     Calendar.buildEvents(allTx, [...schedules, ...txSchedules]);
     Calendar.render();
+
+  } catch (e) {
+    console.error('[Calendar] erro ao carregar dados:', e);
+    Calendar.buildEvents([], []);
+    Calendar.render();
+    toast('⚠️ Não consegui carregar os vencimentos', 'warning');
   }
+}
 
   function calNav(delta)         { Calendar.navigate(delta); }
   function calSelectDay(dateStr) { Calendar.selectDay(dateStr); }
