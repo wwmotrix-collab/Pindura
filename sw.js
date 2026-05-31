@@ -1,41 +1,32 @@
-// PENDURA v2.1.8 — SERVICE WORKER
-// Cache seguro: evita tela sem CSS/JS e força troca de versão.
-const CACHE = 'pindura-v2.1.8-safe-cache';
-const ASSETS = [
-  '/', '/index.html',
-  '/css/main.css',
-  '/js/config.js', '/js/supabase.js', '/js/app.js', '/js/pwa.js',
-  '/js/modules/fx.js', '/js/modules/confidence.js',
-  '/js/modules/calendar.js', '/js/modules/profile.js',
-  '/js/services/whatsapp.js',
-  '/manifest.json',
-  '/icons/logo-pindura-horizontal.png',
-  '/icons/logo-pindura-vertical.png',
-  '/icons/splash-pindura.png',
-  '/icons/icon-192.png',
-  '/icons/icon-512.png'
-];
+// PENDURA v2.1.9 — SERVICE WORKER KILL SWITCH
+// Desativa o cache PWA para recuperar CSS/JS no mobile.
 
-self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)));
+self.addEventListener('install', event => {
   self.skipWaiting();
 });
 
-self.addEventListener('activate', e => {
-  e.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
-    )
-  );
-  self.clients.claim();
+self.addEventListener('activate', event => {
+  event.waitUntil((async () => {
+    try {
+      const keys = await caches.keys();
+      await Promise.all(keys.map(key => caches.delete(key)));
+    } catch (e) {
+      console.warn('[SW] falha ao limpar caches:', e);
+    }
+
+    try {
+      await self.clients.claim();
+      const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+      for (const client of clients) {
+        try { client.navigate(client.url); } catch (e) {}
+      }
+    } catch (e) {}
+
+    try { await self.registration.unregister(); } catch (e) {}
+  })());
 });
 
-self.addEventListener('fetch', e => {
-  if (e.request.url.includes('supabase.co') || e.request.url.includes('wa.me') ||
-      e.request.url.includes('fonts.googleapis') || e.request.url.includes('fonts.gstatic') ||
-      e.request.url.includes('jsdelivr')) return;
-
-  e.respondWith(
-    caches.match(e.request).then(cached => cached || fetch(e.request))
-  );
+self.addEventListener('fetch', event => {
+  // Sem cache. Deixa o navegador/Vercel entregar tudo direto da rede.
+  event.respondWith(fetch(event.request));
 });
