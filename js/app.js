@@ -1081,8 +1081,11 @@ const App = (() => {
     // Render inicial: garante que mês/dias apareçam mesmo se a busca falhar.
     if (typeof Calendar !== 'undefined' && Calendar?.buildEvents && Calendar?.render) {
       try {
+        console.log('[CALENDAR]', Calendar);
+console.log('[CALENDAR RENDER]', typeof Calendar.render);
         Calendar.buildEvents([], []);
         Calendar.render();
+        console.log('[CALENDAR] render executado');
       } catch (e) {
         console.error('[Pendura] Calendar render inicial falhou:', e);
       }
