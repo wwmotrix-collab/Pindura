@@ -373,10 +373,16 @@ const App = (() => {
     const badge = document.getElementById('pending-conf-badge');
     if (badge) { badge.textContent = `⏳ ${pendingConf} pendente${pendingConf !== 1 ? 's' : ''}`; badge.style.display = pendingConf > 0 ? '' : 'none'; }
 
-    // FIX calendário: schedules derivados das transações com due_date
-    const schedules = DEMO_MODE ? (DB.schedules || []) : ((await dbGetSchedules(mid)).data || []);
-    const upcoming  = schedules.filter(s => s.status !== 'paid').length;
-    // FIX: contar também transações com due_date pendente
+    // Calendário / próximos vencimentos: defensivo para não quebrar login/dashboard.
+    let schedules = [];
+    try {
+      if (DEMO_MODE) schedules = DB.schedules || [];
+      else if (typeof dbGetSchedules === 'function') schedules = ((await dbGetSchedules(mid))?.data || []);
+    } catch (e) {
+      console.warn('[Pendura] dbGetSchedules falhou no dashboard:', e);
+      schedules = [];
+    }
+    const upcoming = schedules.filter(s => s.status !== 'paid').length;
     const txWithDue = S.allLedgers.length > 0 ? (() => {
       if (DEMO_MODE) return DB.transactions.filter(t => t.due_date && t.status === 'pending').length;
       return 0;
@@ -1070,57 +1076,96 @@ const App = (() => {
   // ── CALENDÁRIO ────────────────────────────────────
   // FIX: carrega transações com due_date para popular o calendário
              async function showCalendarScreen() {
-  showScreen('calendar');
+    showScreen('calendar');
 
-  // Renderiza imediatamente, mesmo sem dados
-  try {
-    Calendar.buildEvents([], []);
-    Calendar.render();
-  } catch (e) {
-    console.error('[Calendar] erro no render inicial:', e);
-  }
-
-  const mid = S.merchant?.id;
-  if (!mid) return;
-
-  try {
-    const { data: rawTx } = await dbGetAllTransactionsForMerchant(mid);
-
-    const allTx = (rawTx || []).map(t => ({
-      ...t,
-      customerName: t.customerName || t.ledgers?.customers?.name || t.ledgers?.customers?.[0]?.name || '—'
-    }));
-
-    let schedules = [];
-    try {
-      const { data: sc } = await dbGetSchedules(mid);
-      schedules = sc || [];
-    } catch (e) {
-      console.warn('[Calendar] dbGetSchedules falhou:', e);
-      schedules = [];
+    // Render inicial: garante que mês/dias apareçam mesmo se a busca falhar.
+    if (typeof Calendar !== 'undefined' && Calendar?.buildEvents && Calendar?.render) {
+      try {
+        Calendar.buildEvents([], []);
+        Calendar.render();
+      } catch (e) {
+        console.error('[Pendura] Calendar render inicial falhou:', e);
+      }
+    } else {
+      console.error('[Pendura] Calendar não está disponível. Confira se js/modules/calendar.js vem antes de js/app.js no index.html.');
+      toast('⚠️ Calendário não carregado', 'warning');
+      return;
     }
 
-    const txSchedules = allTx
-      .filter(t => t.due_date && t.status !== 'cancelled')
-      .map(t => ({
-        due_date: t.due_date,
-        amount: t.amount,
-        description: t.description || 'Vencimento',
-        customerName: t.customerName || '—',
-        status: t.status === 'confirmed' ? 'paid' : 'pending',
-        txId: t.id
+    const mid = S.merchant?.id;
+    if (!mid) return;
+
+    try {
+      let rawTx = [];
+
+      // Preferencial: função agregada, se existir no supabase.js.
+      if (typeof dbGetAllTransactionsForMerchant === 'function') {
+        const res = await dbGetAllTransactionsForMerchant(mid);
+        rawTx = res?.data || [];
+      } else {
+        // Fallback: monta transações a partir dos ledgers já carregados no dashboard.
+        const ledgers = S.allLedgers?.length
+          ? S.allLedgers
+          : ((await dbGetLedgersForMerchant(mid))?.data || []);
+
+        const txChunks = await Promise.all((ledgers || []).map(async (l) => {
+          try {
+            const res = await dbGetTransactions(l.id);
+            const customer = S.allCustomers?.find(c => c.id === l.customer_id);
+            return (res?.data || []).map(t => ({
+              ...t,
+              ledger_id: t.ledger_id || l.id,
+              customerName: t.customerName || customer?.name || '—'
+            }));
+          } catch (e) {
+            console.warn('[Calendar] falha ao buscar transações do ledger', l.id, e);
+            return [];
+          }
+        }));
+
+        rawTx = txChunks.flat();
+      }
+
+      const allTx = (rawTx || []).map(t => ({
+        ...t,
+        customerName:
+          t.customerName ||
+          t.ledgers?.customers?.name ||
+          t.ledgers?.customers?.[0]?.name ||
+          '—'
       }));
 
-    Calendar.buildEvents(allTx, [...schedules, ...txSchedules]);
-    Calendar.render();
+      let schedules = [];
+      if (typeof dbGetSchedules === 'function') {
+        try {
+          const res = await dbGetSchedules(mid);
+          schedules = res?.data || [];
+        } catch (e) {
+          console.warn('[Calendar] dbGetSchedules falhou:', e);
+          schedules = [];
+        }
+      }
 
-  } catch (e) {
-    console.error('[Calendar] erro ao carregar dados:', e);
-    Calendar.buildEvents([], []);
-    Calendar.render();
-    toast('⚠️ Não consegui carregar os vencimentos', 'warning');
+      const txSchedules = allTx
+        .filter(t => t.due_date && t.status !== 'cancelled')
+        .map(t => ({
+          due_date: t.due_date,
+          amount: t.amount,
+          description: t.description || 'Vencimento',
+          customerName: t.customerName || '—',
+          status: t.status === 'confirmed' ? 'paid' : 'pending',
+          txId: t.id
+        }));
+
+      Calendar.buildEvents(allTx, [...schedules, ...txSchedules]);
+      Calendar.render();
+    } catch (e) {
+      console.error('[Calendar] erro ao carregar dados:', e);
+      Calendar.buildEvents([], []);
+      Calendar.render();
+      toast('⚠️ Não consegui carregar os vencimentos', 'warning');
+    }
   }
-}
 
   function calNav(delta)         { Calendar.navigate(delta); }
   function calSelectDay(dateStr) { Calendar.selectDay(dateStr); }
@@ -1140,12 +1185,26 @@ const App = (() => {
   // ── TOAST ─────────────────────────────────────────
   function toast(msg, type = 'default') {
     const container = document.getElementById('toast-container');
-    if (!container) return;
-    const el = document.createElement('div');
-    el.className = `toast t-${type}`;
-    el.textContent = msg;
-    container.appendChild(el);
-    setTimeout(() => { el.classList.add('fade-out'); setTimeout(() => el.remove(), 300); }, 3000);
+    if (container) {
+      const el = document.createElement('div');
+      el.className = `toast t-${type}`;
+      el.textContent = msg;
+      container.appendChild(el);
+      setTimeout(() => { el.classList.add('fade-out'); setTimeout(() => el.remove(), 300); }, 3000);
+      return;
+    }
+
+    // Fallback para o HTML atual, que usa #toast em vez de #toast-container.
+    const single = document.getElementById('toast');
+    if (!single) { console.log('[Toast]', msg); return; }
+    single.textContent = msg;
+    single.className = `toast t-${type}`;
+    single.classList.remove('hidden', 'fade-out');
+    clearTimeout(single._penduraToastTimer);
+    single._penduraToastTimer = setTimeout(() => {
+      single.classList.add('fade-out');
+      setTimeout(() => single.classList.add('hidden'), 300);
+    }, 3000);
   }
 
   // ── LOADING ───────────────────────────────────────
