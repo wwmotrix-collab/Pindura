@@ -1078,17 +1078,60 @@ const App = (() => {
              async function showCalendarScreen() {
     showScreen('calendar');
 
-    // Render inicial: garante que mês/dias apareçam mesmo se a busca falhar.
-    if (typeof Calendar !== 'undefined' && Calendar?.buildEvents && Calendar?.render) {
-      try {
-        console.log('[CALENDAR]', Calendar);
-console.log('[CALENDAR RENDER]', typeof Calendar.render);
+    try {
         Calendar.buildEvents([], []);
         Calendar.render();
-        console.log('[CALENDAR] render executado');
-      } catch (e) {
-        console.error('[Pendura] Calendar render inicial falhou:', e);
-      }
+
+        const mid = S.merchant?.id;
+        if (!mid) return;
+
+        const { data: rawTx } =
+            await dbGetAllTransactionsForMerchant(mid);
+
+        const allTx = (rawTx || []).map(t => ({
+            ...t,
+            customerName:
+                t.customerName ||
+                t.ledgers?.customers?.name ||
+                t.ledgers?.customers?.[0]?.name ||
+                '_'
+        }));
+
+        let schedules = [];
+
+        try {
+            const { data: sc } = await dbGetSchedules(mid);
+            schedules = sc || [];
+        } catch (e) {
+            schedules = [];
+        }
+
+        const txSchedules = (allTx || [])
+            .filter(t => t.due_date && t.status !== 'cancelled')
+            .map(t => ({
+                due_date: t.due_date,
+                amount: t.amount,
+                description: t.description || 'Vencimento',
+                customerName: t.customerName || '_',
+                status: t.status === 'confirmed'
+                    ? 'paid'
+                    : 'pending'
+            }));
+
+        Calendar.buildEvents(
+            allTx,
+            [...schedules, ...txSchedules]
+        );
+
+        Calendar.render();
+
+    } catch (e) {
+        console.error('Calendar error:', e);
+
+        Calendar.buildEvents([], []);
+        Calendar.render();
+    }
+}
     } else {
       console.error('[Pendura] Calendar não está disponível. Confira se js/modules/calendar.js vem antes de js/app.js no index.html.');
       toast('⚠️ Calendário não carregado', 'warning');
