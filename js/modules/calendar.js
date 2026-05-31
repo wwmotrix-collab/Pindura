@@ -1,5 +1,5 @@
 // ══════════════════════════════════════════════════
-// PENDURA v2.1.5 — CALENDAR.JS
+// PENDURA v2.1.6 — CALENDAR.JS
 // Calendário de pagamentos e vencimentos
 // ══════════════════════════════════════════════════
 
@@ -24,7 +24,7 @@ const Calendar = (() => {
       _addEvent(dateStr, {
         type: tx.type === 'payment' ? 'paid' : 'purchase',
         label: tx.description || (tx.type === 'payment' ? 'Pagamento' : 'Compra'),
-        customer: tx.customerName || tx.customer_name || '—',
+        customer: tx.customerName || tx.customer_name || tx.customer?.name || tx.ledgers?.customers?.name || '—',
         amount: tx.amount,
         status: tx.status,
         txId: tx.id || null
@@ -44,10 +44,10 @@ const Calendar = (() => {
       _addEvent(due, {
         type: isPaid ? 'paid' : isLate ? 'late' : 'upcoming',
         label: s.description || 'Vencimento',
-        customer: s.customerName || s.customer_name || '—',
+        customer: s.customerName || s.customer_name || s.customer?.name || s.customers?.name || '—',
         amount: s.amount,
         status: s.status,
-        txId: s.txId || s.tx_id || null
+        txId: s.txId || s.tx_id || s.id || null
       });
     });
   }
@@ -175,7 +175,8 @@ const Calendar = (() => {
 
   function _eventCard(item) {
     const dateLabel = item.date ? new Date(item.date + 'T00:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }) : '';
-    const clickable = item.txId ? `onclick="App.openTransactionDetail('${String(item.txId).replace(/'/g, "\\'")}')"` : '';
+    const safeTxId = String(item.txId || '').replace(/'/g, '\\&#39;');
+    const clickable = item.txId ? `onclick="App.openTransactionDetail('${safeTxId}')"` : '';
     const icon = item.type === 'paid' ? '✅' : item.type === 'late' ? '🔴' : item.type === 'purchase' ? '🛒' : '⏳';
 
     return `
@@ -202,3 +203,112 @@ const Calendar = (() => {
 })();
 
 window.Calendar = Calendar;
+
+// Patch defensivo: o app.js atual tem um bloco antigo duplicado no método de calendário.
+// Esta correção sobrescreve apenas as ações públicas do calendário, sem mexer no restante do app.
+document.addEventListener('DOMContentLoaded', () => {
+  try {
+    if (typeof App === 'undefined' || !window.Calendar) return;
+
+    function getMerchantIdFromSession() {
+      try {
+        const session = JSON.parse(localStorage.getItem('pendura_session') || 'null');
+        if (!session || session.type !== 'merchant') return null;
+        return session.data?.id || null;
+      } catch (e) {
+        return null;
+      }
+    }
+
+    function customerNameFromLedger(tx, ledgers, customers) {
+      if (tx.customerName || tx.customer_name) return tx.customerName || tx.customer_name;
+      const nested = tx.ledgers?.customers;
+      if (Array.isArray(nested)) return nested[0]?.name || '—';
+      if (nested?.name) return nested.name;
+      const ledger = (ledgers || []).find(l => l.id === tx.ledger_id);
+      const customer = ledger?.customers || (customers || []).find(c => c.id === ledger?.customer_id);
+      return customer?.name || '—';
+    }
+
+    async function loadTransactions(mid) {
+      if (typeof dbGetAllTransactionsForMerchant === 'function') {
+        const res = await dbGetAllTransactionsForMerchant(mid);
+        return res?.data || [];
+      }
+
+      if (typeof dbGetLedgersForMerchant !== 'function' || typeof dbGetTransactions !== 'function') return [];
+      const ledgerRes = await dbGetLedgersForMerchant(mid);
+      const ledgers = ledgerRes?.data || [];
+      const chunks = await Promise.all(ledgers.map(async ledger => {
+        try {
+          const txRes = await dbGetTransactions(ledger.id);
+          return (txRes?.data || []).map(tx => ({ ...tx, ledger_id: tx.ledger_id || ledger.id, ledgers: ledger }));
+        } catch (e) {
+          console.warn('[Calendar] falha ao buscar transações:', ledger.id, e);
+          return [];
+        }
+      }));
+      return chunks.flat();
+    }
+
+    App.showCalendarScreen = async function showCalendarScreenFixed() {
+      App.showScreen('calendar');
+      Calendar.buildEvents([], []);
+      Calendar.render();
+
+      const mid = getMerchantIdFromSession();
+      if (!mid) return;
+
+      try {
+        const allTxRaw = await loadTransactions(mid);
+        let customers = [];
+        try {
+          if (typeof dbGetCustomers === 'function') customers = (await dbGetCustomers(mid))?.data || [];
+        } catch (e) { customers = []; }
+
+        let ledgers = [];
+        try {
+          if (typeof dbGetLedgersForMerchant === 'function') ledgers = (await dbGetLedgersForMerchant(mid))?.data || [];
+        } catch (e) { ledgers = []; }
+
+        const allTx = (allTxRaw || []).map(tx => ({
+          ...tx,
+          customerName: customerNameFromLedger(tx, ledgers, customers)
+        }));
+
+        let schedules = [];
+        if (typeof dbGetSchedules === 'function') {
+          try {
+            schedules = (await dbGetSchedules(mid))?.data || [];
+          } catch (e) {
+            console.warn('[Calendar] dbGetSchedules falhou:', e);
+          }
+        }
+
+        const txSchedules = allTx
+          .filter(tx => tx.due_date && tx.status !== 'cancelled')
+          .map(tx => ({
+            due_date: tx.due_date,
+            amount: tx.amount,
+            description: tx.description || 'Vencimento',
+            customerName: tx.customerName || '—',
+            status: tx.status === 'confirmed' ? 'paid' : 'pending',
+            txId: tx.id
+          }));
+
+        Calendar.buildEvents(allTx, [...schedules, ...txSchedules]);
+        Calendar.render();
+      } catch (e) {
+        console.error('[Calendar] erro ao abrir:', e);
+        Calendar.buildEvents([], []);
+        Calendar.render();
+        if (typeof App.toast === 'function') App.toast('⚠️ Não consegui carregar os vencimentos', 'warning');
+      }
+    };
+
+    App.calNav = delta => Calendar.navigate(delta);
+    App.calSelectDay = dateStr => Calendar.selectDay(dateStr);
+  } catch (e) {
+    console.error('[Calendar] patch não aplicado:', e);
+  }
+});
