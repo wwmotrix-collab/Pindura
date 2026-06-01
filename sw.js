@@ -1,5 +1,5 @@
-// PENDURA v2.1.9 — SERVICE WORKER KILL SWITCH
-// Desativa o cache PWA para recuperar CSS/JS no mobile.
+// PENDURA v2.2.0 — SERVICE WORKER KILL SWITCH
+// Objetivo: retirar qualquer cache antigo que deixou HTML/CSS/JS quebrado no mobile.
 
 self.addEventListener('install', event => {
   self.skipWaiting();
@@ -18,7 +18,10 @@ self.addEventListener('activate', event => {
       await self.clients.claim();
       const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
       for (const client of clients) {
-        try { client.navigate(client.url); } catch (e) {}
+        try {
+          client.postMessage({ type: 'PINDURA_CACHE_RESET' });
+          client.navigate(client.url.split('#')[0] + '?v=220-cache-reset');
+        } catch (e) {}
       }
     } catch (e) {}
 
@@ -27,6 +30,5 @@ self.addEventListener('activate', event => {
 });
 
 self.addEventListener('fetch', event => {
-  // Sem cache. Deixa o navegador/Vercel entregar tudo direto da rede.
-  event.respondWith(fetch(event.request));
+  event.respondWith(fetch(event.request, { cache: 'reload' }));
 });
