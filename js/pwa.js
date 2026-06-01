@@ -1,20 +1,58 @@
 // ══════════════════════════════════════════════════
-// PENDURA v2.1 — PWA.JS
-// Instalação e service worker
+// PENDURA v2.2.0 — PWA CLEANUP
+// Desativa o service worker antigo e força recuperação de CSS/JS no mobile.
 // ══════════════════════════════════════════════════
 
 let _deferredPrompt = null;
+const PINDURA_ASSET_VERSION = '220-cache-reset';
 
-// Registra SW
+(function recoverMobileCss() {
+  try {
+    const css = document.querySelector('link[rel="stylesheet"][href*="css/main.css"]');
+    if (css && !css.href.includes(PINDURA_ASSET_VERSION)) {
+      css.href = `css/main.css?v=${PINDURA_ASSET_VERSION}`;
+    }
+  } catch (e) {
+    console.warn('[PWA] falha ao atualizar CSS:', e);
+  }
+})();
+
+// Kill switch: não registra mais Service Worker enquanto o app estiver em ajuste.
+// O bug visual veio de cache antigo servindo HTML/CSS fora de sincronia.
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js')
-      .then(r  => console.log('SW:', r.scope))
-      .catch(e => console.warn('SW erro:', e));
+  window.addEventListener('load', async () => {
+    try {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map(reg => reg.unregister()));
+      console.log('[PWA] Service workers removidos:', regs.length);
+    } catch (e) {
+      console.warn('[PWA] erro ao remover SW:', e);
+    }
+
+    try {
+      if ('caches' in window) {
+        const keys = await caches.keys();
+        await Promise.all(keys.map(key => caches.delete(key)));
+        console.log('[PWA] caches removidos:', keys.length);
+      }
+    } catch (e) {
+      console.warn('[PWA] erro ao limpar caches:', e);
+    }
+
+    try {
+      const alreadyReloaded = sessionStorage.getItem('pindura_css_recovered_v220');
+      const hasVersion = location.search.includes('v=220-cache-reset') || location.search.includes('v=220');
+      if (!alreadyReloaded && !hasVersion) {
+        sessionStorage.setItem('pindura_css_recovered_v220', '1');
+        const url = new URL(location.href);
+        url.searchParams.set('v', PINDURA_ASSET_VERSION);
+        location.replace(url.toString());
+      }
+    } catch (e) {}
   });
 }
 
-// Banner de instalação
+// Banner de instalação mantido sem registrar novo SW.
 window.addEventListener('beforeinstallprompt', e => {
   e.preventDefault();
   _deferredPrompt = e;
