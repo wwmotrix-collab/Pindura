@@ -5,6 +5,13 @@
 
 let _deferredPrompt = null;
 
+// Carrega o calendário antes do app.js sem tocar no index.html.
+// document.write aqui é intencional: como este arquivo roda durante o parse do HTML,
+// o browser injeta e executa js/calendar.js antes do script seguinte, js/app.js.
+if (!window.Calendar) {
+  document.write('<script src="js/calendar.js"><\/script>');
+}
+
 // Registra SW
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
